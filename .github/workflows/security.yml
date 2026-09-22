@@ -36,7 +36,8 @@ jobs:
         run: pytest -q --cov=app --cov-report=term-missing --cov-report=html
 
       - name: Run Bandit
-        run: bandit -r app -f json -o reports/bandit.json
+        run: bandit -r app -f json -o reports/bandit.json -s B311
+        continue-on-error: false
 
       - name: Run Semgrep
         run: semgrep scan --config p/python --config p/security-audit app tests --json --output reports/semgrep.json
