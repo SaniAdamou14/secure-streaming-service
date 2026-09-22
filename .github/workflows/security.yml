@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -37,24 +39,32 @@ jobs:
 
       - name: Run Bandit
         run: bandit -r app -f json -o reports/bandit.json -s B311
-        continue-on-error: false
 
       - name: Run Semgrep
         run: semgrep scan --config p/python --config p/security-audit app tests --json --output reports/semgrep.json
 
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install Gitleaks
+        run: |
+          GITLEAKS_VERSION="8.18.4"
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar xz -C /usr/local/bin gitleaks
 
-      - name: Run Trivy
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: HIGH,CRITICAL
-          format: json
-          output: reports/trivy.json
+      - name: Run Gitleaks (directory)
+        run: gitleaks detect --no-git --no-banner --report-format json --report-path reports/gitleaks-dir.json -s .
+
+      - name: Run Gitleaks (git history)
+        run: gitleaks detect --no-banner --report-format json --report-path reports/gitleaks-git.json -s .
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Run Trivy (filesystem)
+        run: trivy fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --format json --output reports/trivy-fs.json .
+
+      - name: Run Trivy (Docker image)
+        run: |
+          docker build -t secure-streaming-service:ci .
+          trivy image --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --format json --output reports/trivy-image.json secure-streaming-service:ci
 
       - name: Upload reports
         if: always()
